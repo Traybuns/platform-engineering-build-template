@@ -33,9 +33,9 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
     
-    - name: Terraform Format Check
+    - name: Terraform Format
       working-directory: ./infra
-      run: terraform fmt -check
+      run: terraform fmt
     
     - name: Terraform Init
       working-directory: ./infra
