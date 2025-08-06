@@ -103,7 +103,7 @@ resource "aws_eks_node_group" "node_group" {
     min_size     = 1
   }
   instance_types = ["t3.medium"]
-  ami_type       = "AL2023_x86_64_STANDARD"  # Updated AMI type for newer Kubernetes versions
+  ami_type       = "AL2023_x86_64_STANDARD" # Updated AMI type for newer Kubernetes versions
   disk_size      = 20
   remote_access {
     ec2_ssh_key = "project"
