@@ -1,0 +1,13 @@
+app:
+  title: IDP Portal
+  baseUrl: http://localhost:7007
+organization:
+  name: Traybuns
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+integrations:
+  github:
+    - host: github.com
+      token: ${DOCKER_TOKEN}

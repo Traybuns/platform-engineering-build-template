@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: idp-microservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: idp-microservice
+  template:
+    metadata:
+      labels:
+        app: idp-microservice
+    spec:
+      containers:
+        - name: idp-microservice
+          image: ghcr.io/your-org/idp-microservice:latest
+          ports:
+            - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: idp-microservice
+spec:
+  selector:
+    app: idp-microservice
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+  type: LoadBalancer

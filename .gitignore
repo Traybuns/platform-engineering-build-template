@@ -1,0 +1,61 @@
+# Sensitive files
+project.pem
+*.pem
+*.key
+*.crt
+
+# Python virtual environment
+venv/
+.venv/
+
+# Node.js build artifacts
+node_modules/
+dist/
+build/
+
+# Backstage temporary/build files
+backstage/build/
+backstage/dist/
+backstage/.cache/
+backstage/node_modules/
+
+# Terraform state and cache
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/*.tfstate
+infra/*.tfstate.*
+# Terraform files
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfplan
+*.tfplan.*
+terraform.log
+.terraformrc
+terraform.rc
+
+# Crash log files
+crash.log
+
+# Exclude all .tfvars files, which are likely to contain sensitive data
+*.tfvars
+*.tfvars.json
+
+# Ignore override files as they are usually used to override resources locally and so
+# are not checked in
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+
+# Kubernetes CLI binary
+kubectl
+
+# Logs and temporary files
+*.log
+*.tmp
+.DS_Store
