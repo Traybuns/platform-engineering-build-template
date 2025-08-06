@@ -13,8 +13,8 @@ spec:
         app: idp-microservice
     spec:
       containers:
-        - name: idp-microservice
-          image: ghcr.io/your-org/idp-microservice:latest
+        - name: backstage
+          image: AWS_ACCOUNT_ID.dkr.ecr.eu-north-1.amazonaws.com/platform-engineering:IMAGE_TAG
           ports:
             - containerPort: 3000
 ---

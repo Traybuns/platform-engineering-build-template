@@ -146,3 +146,59 @@ resource "aws_iam_role_policy_attachment" "ecr_policy" {
   role       = aws_iam_role.node_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
+
+# Add this to your eks.tf file
+
+# ECR Repository for storing Docker images
+resource "aws_ecr_repository" "platform_engineering" {
+  name                 = "platform-engineering"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Name = "platform-engineering-ecr"
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "platform_engineering_policy" {
+  repository = aws_ecr_repository.platform_engineering.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 30 production images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 30
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        rulePriority = 2
+        description  = "Keep last 10 untagged images"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
+# Output the ECR repository URL
+output "ecr_repository_url" {
+  description = "URL of the ECR repository"
+  value       = aws_ecr_repository.platform_engineering.repository_url
+}
