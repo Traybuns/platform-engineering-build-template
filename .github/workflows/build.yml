@@ -33,9 +33,10 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
     
-    - name: Terraform Format
+    - name: Terraform Format Check
       working-directory: ./infra
-      run: terraform fmt
+      run: terraform fmt -check
+      continue-on-error: true
     
     - name: Terraform Init
       working-directory: ./infra
@@ -67,19 +68,20 @@ jobs:
         cache: 'npm'
     
     - name: Install dependencies
-      run: |
-        npm install
-        cd backstage && yarn install --frozen-lockfile
-    
-    - name: Build Backstage
       working-directory: ./backstage
-      run: |
-        yarn build:backend
-        yarn build
+      run: yarn install --frozen-lockfile
+    
+    - name: Build Backstage Backend
+      working-directory: ./backstage
+      run: yarn build:backend
+    
+    - name: Build All Components
+      working-directory: ./backstage
+      run: yarn build:all
     
     - name: Run tests
       working-directory: ./backstage
-      run: yarn test --passWithNoTests
+      run: yarn test --passWithNoTests --watchAll=false
       continue-on-error: true
 
   # Build and push Docker images
@@ -121,14 +123,24 @@ jobs:
     
     - name: Build and push Docker image
       id: build
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      uses: docker/build-push-action@v6
+      working-directory: ./backstage
+      run: |
+        yarn build:backend
+        yarn build-image --tag temp-backstage-image
+    
+    - name: Tag and push to ECR
+      run: |
+        # Get the temporary image ID
+        IMAGE_ID=$(docker images temp-backstage-image --format "table {{.ID}}" | tail -1)
+        
+        # Tag for ECR
+        docker tag $IMAGE_ID ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        docker tag $IMAGE_ID ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+        
+        # Push to ECR
+        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
 
   # Deploy infrastructure (only on main branch)
   deploy-infrastructure:
