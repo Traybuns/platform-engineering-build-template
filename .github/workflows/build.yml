@@ -80,7 +80,6 @@ jobs:
     - name: Run tests
       working-directory: ./backstage
       run: yarn test --passWithNoTests --watchAll=false
-      continue-on-error: true
 
   build-and-push:
     name: 'Build and Push Docker Image'
@@ -117,6 +116,10 @@ jobs:
           type=ref,event=pr
           type=sha,prefix=sha-
           type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Install dependencies
+      working-directory: ./backstage
+      run: yarn install --frozen-lockfile
     
     - name: Build Backstage Image
       working-directory: ./backstage
@@ -161,3 +164,83 @@ jobs:
     
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.5.0
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Terraform Init
+      working-directory: ./infra
+      run: terraform init
+    
+    - name: Terraform Apply
+      working-directory: ./infra
+      run: terraform apply -auto-approve
+
+  deploy-to-eks:
+    name: 'Deploy to EKS'
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure, build-and-push]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Update kubeconfig
+      run: |
+        aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+    
+    - name: Deploy to Kubernetes
+      run: |
+        sed -i 's|IMAGE_TAG|${{ needs.build-and-push.outputs.image-tag }}|g' deployment.yml
+        kubectl apply -f deployment.yml
+        kubectl rollout status deployment/backstage-deployment
+        kubectl get services
+
+  security-scan:
+    name: 'Security Scan'
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@0.11.0
+      with:
+        image-ref: ${{ needs.build-and-push.outputs.image-tag }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  cleanup:
+    name: 'Cleanup on Failure'
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure, deploy-to-eks]
+    if: failure() && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Cleanup failed deployment
+      run: |
+        echo "Cleanup procedures would go here"
+        # Add specific cleanup commands if needed
