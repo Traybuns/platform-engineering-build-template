@@ -84,8 +84,8 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: './backstage/package-lock.json'
+        cache: 'yarn'
+        cache-dependency-path: './backstage/yarn.lock'
     
     - name: Install dependencies
       working-directory: ./backstage
@@ -181,8 +181,8 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: './backstage/package-lock.json'
+        cache: 'yarn'
+        cache-dependency-path: './backstage/yarn.lock'
     
     - name: Install dependencies
       working-directory: ./backstage
