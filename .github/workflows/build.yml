@@ -230,14 +230,9 @@ jobs:
         image-ref: ${{ needs.build-and-push.outputs.image-tag }}
         format: sarif
         output: trivy-results.sarif
-      working-directory: ./backstage
       continue-on-error: true
-    - working-directory: ./backstage
+    - working-directory: ./backstage 
       run: ls -l trivy-results.sarif || echo "SARIF file not found"
-    - uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: ./backstage/trivy-results.sarif
 
   cleanup:
     name: Cleanup on Failure
