@@ -1,5 +1,9 @@
+```yaml
 name: Platform Engineering CI/CD Pipeline
-
+permissions:
+  security-events: write  # For SARIF uploads
+  contents: read
+  actions: write
 on:
   push:
     branches: [ main, develop ]
@@ -8,59 +12,47 @@ on:
 
 env:
   AWS_REGION: eu-north-1
-  
+
 jobs:
   terraform-validate:
-    name: 'Terraform Validate'
+    name: Terraform Validate
     runs-on: ubuntu-latest
-    
     outputs:
       cluster-name: ${{ steps.tf-output.outputs.cluster-name }}
       backstage-ecr-url: ${{ steps.tf-output.outputs.backstage-ecr-url }}
       main-app-ecr-url: ${{ steps.tf-output.outputs.main-app-ecr-url }}
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: 1.5.0
         terraform_wrapper: false
-    
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-    
     - name: Terraform Format Check
       working-directory: ./infra
       run: |
-        terraform fmt
         terraform fmt -check
-    
     - name: Terraform Init
       working-directory: ./infra
       run: terraform init
-    
     - name: Terraform Validate
       working-directory: ./infra
       run: terraform validate
-    
     - name: Terraform Plan
-      working-directory: ./infra
+      working-directoryId: ./infra
       run: terraform plan -no-color
       continue-on-error: true
-    
-    # Get outputs even from plan (if resources exist)
     - name: Get Terraform Outputs
       id: tf-output
       working-directory: ./infra
       run: |
-        # Try to get outputs if state exists, otherwise use placeholder values
         if terraform state list > /dev/null 2>&1; then
           echo "cluster-name=$(terraform output -raw cluster_name 2>/dev/null || echo 'cluster-pending')" >> $GITHUB_OUTPUT
           echo "backstage-ecr-url=$(terraform output -raw backstage_ecr_repository_url 2>/dev/null || echo 'ecr-pending')" >> $GITHUB_OUTPUT
@@ -72,73 +64,60 @@ jobs:
         fi
 
   build-app:
-    name: 'Build Application'
+    name: Build Application
     runs-on: ubuntu-latest
     needs: terraform-validate
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '18'
         cache: 'yarn'
         cache-dependency-path: './backstage/yarn.lock'
-    
     - name: Install dependencies
       working-directory: ./backstage
       run: yarn install --frozen-lockfile
-    
     - name: Build Backstage Backend
       working-directory: ./backstage
       run: yarn build:backend
-    
     - name: Build All Components
       working-directory: ./backstage
       run: yarn build:all
-    
     - name: Run tests
       working-directory: ./backstage
       run: yarn test --passWithNoTests --watchAll=false
 
   deploy-infrastructure:
-    name: 'Deploy Infrastructure'
+    name: Deploy Infrastructure
     runs-on: ubuntu-latest
     needs: terraform-validate
     if: github.ref == 'refs/heads/main'
-    
     outputs:
       cluster-name: ${{ steps.tf-outputs.outputs.cluster-name }}
       backstage-ecr-url: ${{ steps.tf-outputs.outputs.backstage-ecr-url }}
       main-app-ecr-url: ${{ steps.tf-outputs.outputs.main-app-ecr-url }}
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: 1.5.0
         terraform_wrapper: false
-    
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-    
     - name: Terraform Init
       working-directory: ./infra
       run: terraform init
-    
     - name: Terraform Apply
       working-directory: ./infra
       run: terraform apply -auto-approve
-    
     - name: Get Terraform Outputs
       id: tf-outputs
       working-directory: ./infra
@@ -146,48 +125,39 @@ jobs:
         echo "cluster-name=$(terraform output -raw cluster_name)" >> $GITHUB_OUTPUT
         echo "backstage-ecr-url=$(terraform output -raw backstage_ecr_repository_url)" >> $GITHUB_OUTPUT
         echo "main-app-ecr-url=$(terraform output -raw platform_engineering_ecr_repository_url)" >> $GITHUB_OUTPUT
-        
-        # Also output for debugging
         echo "Cluster Name: $(terraform output -raw cluster_name)"
         echo "Backstage ECR: $(terraform output -raw backstage_ecr_repository_url)"
         echo "Main App ECR: $(terraform output -raw platform_engineering_ecr_repository_url)"
 
   build-and-push:
-    name: 'Build and Push Docker Image'
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
     needs: [build-app, deploy-infrastructure]
     if: github.ref == 'refs/heads/main'
-    
     outputs:
       image-tag: ${{ steps.build.outputs.image-tag }}
       image-digest: ${{ steps.build.outputs.digest }}
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-    
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
-    
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '18'
         cache: 'yarn'
         cache-dependency-path: './backstage/yarn.lock'
-    
     - name: Install dependencies
       working-directory: ./backstage
       run: yarn install --frozen-lockfile
-    
     - name: Build Backstage Image
       working-directory: ./backstage
       run: |
@@ -195,65 +165,46 @@ jobs:
         yarn build-image --tag temp-backstage-image
         echo "Listing Docker images:"
         docker images | grep temp-backstage-image
-    
     - name: Tag and push to ECR
       id: build
       run: |
-        # Get the temporary image ID
-        IMAGE_ID=$(docker images temp-backstage-image --format "table {{.ID}}" | tail -1)
+        IMAGE_ID=$(docker images temp-backstage-image --format "{{.ID}}" | head -n 1)
         if [ -z "$IMAGE_ID" ]; then
           echo "Error: No image found with name 'temp-backstage-image'"
           exit 1
         fi
         echo "Image ID: $IMAGE_ID"
-        
-        # Use the actual ECR URL from Terraform outputs
         ECR_URL="${{ needs.deploy-infrastructure.outputs.backstage-ecr-url }}"
-        
-        # Tag for ECR
         docker tag $IMAGE_ID $ECR_URL:${{ github.sha }}
         docker tag $IMAGE_ID $ECR_URL:latest
-        
-        # Push to ECR
         docker push $ECR_URL:${{ github.sha }}
         docker push $ECR_URL:latest
-        
-        # Set outputs for other jobs
         echo "image-tag=$ECR_URL:${{ github.sha }}" >> $GITHUB_OUTPUT
-        
-        # Get digest
         DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $ECR_URL:${{ github.sha }} 2>/dev/null | cut -d'@' -f2 || echo "digest-unavailable")
         echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
   deploy-to-eks:
-    name: 'Deploy to EKS'
+    name: Deploy to EKS
     runs-on: ubuntu-latest
     needs: [deploy-infrastructure, build-and-push]
     if: github.ref == 'refs/heads/main'
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-    
     - name: Update kubeconfig
       run: |
         CLUSTER_NAME="${{ needs.deploy-infrastructure.outputs.cluster-name }}"
         echo "Updating kubeconfig for cluster: $CLUSTER_NAME"
         aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $CLUSTER_NAME
-        
-        # Verify connection
         kubectl get nodes
-    
     - name: Deploy to Kubernetes
       run: |
-        # Create deployment file if it doesn't exist
         if [ ! -f deployment.yml ]; then
           cat > deployment.yml << EOF
         apiVersion: apps/v1
@@ -295,50 +246,42 @@ jobs:
           type: LoadBalancer
         EOF
         fi
-        
-        # Replace placeholder with actual image tag
         sed -i 's|IMAGE_TAG|${{ needs.build-and-push.outputs.image-tag }}|g' deployment.yml
-        
-        # Apply the deployment
         kubectl apply -f deployment.yml
-        
-        # Wait for deployment to be ready
         kubectl rollout status deployment/backstage-deployment --timeout=300s
-        
-        # Show status
         kubectl get services
         kubectl get pods
 
   security-scan:
-    name: 'Security Scan'
+    name: Security Scan
     runs-on: ubuntu-latest
     needs: build-and-push
     if: always()
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@0.11.0
       with:
         image-ref: ${{ needs.build-and-push.outputs.image-tag }}
-        format: 'sarif'
-        output: 'trivy-results.sarif'
+        format: sarif
+        output: trivy-results.sarif
+      working-directory: ./backstage
       continue-on-error: true
-    
+    - name: Verify SARIF file
+      working-directory: ./backstage
+      run: ls -l trivy-results.sarif || echo "SARIF file not found"
     - name: Upload Trivy scan results
       uses: github/codeql-action/upload-sarif@v3
       if: always()
       with:
-        sarif_file: 'trivy-results.sarif'
+        sarif_file: ./backstage/trivy-results.sarif
 
   cleanup:
-    name: 'Cleanup on Failure'
+    name: Cleanup on Failure
     runs-on: ubuntu-latest
     needs: [deploy-infrastructure, deploy-to-eks]
     if: failure() && github.ref == 'refs/heads/main'
-    
     steps:
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -346,10 +289,8 @@ jobs:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-        
     - name: Cleanup failed deployment
       run: |
-        echo "Cleanup procedures would go here"
-        # Add specific cleanup commands if needed
-        # kubectl delete deployment backstage-deployment --ignore-not-found=true
-        # kubectl delete service backstage-service --ignore-not-found=true
+        kubectl delete deployment backstage-deployment --ignore-not-found=true
+        kubectl delete service backstage-service --ignore-not-found=true
+```

@@ -197,8 +197,31 @@ resource "aws_ecr_lifecycle_policy" "platform_engineering_policy" {
   })
 }
 
-# Output the ECR repository URL
-output "ecr_repository_url" {
-  description = "URL of the ECR repository"
+# Add Backstage ECR repository
+resource "aws_ecr_repository" "backstage" {
+  name                 = "backstage"
+  image_tag_mutability = "MUTABLE"
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+  tags = {
+    Name = "backstage-ecr"
+  }
+}
+
+# Update outputs
+output "cluster_name" {
+  description = "EKS cluster name"
+  value       = aws_eks_cluster.idp_cluster.name
+}
+
+output "backstage_ecr_repository_url" {
+  description = "ECR repository URL for Backstage"
+  value       = aws_ecr_repository.backstage.repository_url
+}
+
+output "platform_engineering_ecr_repository_url" {
+  description = "ECR repository URL for platform engineering"
   value       = aws_ecr_repository.platform_engineering.repository_url
 }
+

@@ -58,4 +58,4 @@ kubectl
 # Logs and temporary files
 *.log
 *.tmp
-.DS_Store
+.DS_Store*.pem
